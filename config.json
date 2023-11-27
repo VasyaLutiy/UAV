@@ -1,0 +1,1 @@
+{"ATTITUDE": ["roll", "pitch", "yaw", "rollspeed", "pitchspeed", "yawspeed"],"BATTERY_STATUS": ["battery_remaining", "energy_consumed"],"WIND": ["direction", "speed"],"RAW_IMU": ["xacc", "yacc", "xgyro", "ygyro"]}
