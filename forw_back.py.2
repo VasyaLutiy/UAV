@@ -1,0 +1,141 @@
+#!/usr/bin/env python
+
+from dronekit import connect, VehicleMode, LocationGlobal, LocationGlobalRelative
+from pymavlink import mavutil # Needed for command message definitions
+import math
+import time
+from time import sleep
+from datetime import datetime
+
+# Set up option parsing to get connection string
+import argparse
+import pandas as pd
+import re
+import os
+import sys
+import numpy as np
+import json
+
+"""
+parser = argparse.ArgumentParser(description='Control Copter and send commands in GUIDED mode ')
+parser.add_argument('--connect',
+                   help="Vehicle connection target string. If not specified, SITL automatically started and used.")
+args = parser.parse_args()
+connection_string = args.connect
+sitl = None
+"""
+
+
+# Загружаем конфигурационные данные из файла
+with open('config.json', 'r') as json_file:
+    config_data = json.load(json_file)
+
+global resultData_dict
+# Создание пустого словаря для хранения данных
+resultData_dict = {field: [] for fields in config_data.values() for field in fields}
+
+drone_name = "drone1"
+current_date = datetime.now().strftime('%Y-%m-%d %H:%M')
+file_path = f"FULL_NEURO_{drone_name}_{current_date}.pkl"
+
+
+# Connect to the Vehicle
+print('Connecting to vehicle ')
+vehicle = connect('127.0.0.1:14550', wait_ready=False)
+
+# подключаем свои классы из neuroDrone_class.py
+from neuroDrone_class import Drone
+from neuroDrone_class import NeuroDrone
+
+### T Motors Params
+#--------------------
+pitch_angle_calc = 0
+roll_angle_calc = 0
+duration_calc = 60
+attitude = 5
+#--------------------
+
+# прямое управление ardupilot в режиме MAVLink CMD,GUIDED,AUTO,LOITER
+drone = Drone(vehicle)
+# GUIDED_NOGPS mode
+neuro_drone = NeuroDrone(config_data, file_path)
+
+
+# Тест  расчет азимута на точку B
+coord_start = (50.424556, 30.173575)
+coord_end = (50.437774, 30.158996)
+
+azimuth = neuro_drone.calculate_bearing(coord_start, coord_end)
+print(f'Азимут между точками: {azimuth} градусов')
+
+distance = neuro_drone.haversine(coord_start, coord_end)
+print(f'Расстояние между точками A и B: {distance} метров')
+
+#print(f'Параметры моторов: {pitch_angle_calc} pitch_angle {roll_angle_calc} roll_angle {duration_calc} duration')
+# Тест  расчет азимута на точку B
+
+# All messages listener. set required MSG_Name and MSG_Fields in config.json
+@vehicle.on_message('*')
+def listener(self, name, message):
+    neuro_drone.log_msg(message, drone_name, current_date)
+
+
+# Take off {ATITTUDE}m in GUIDED_NOGPS mode.
+# neuro_drone.arm_and_takeoff_nogps(attitude)
+# print("Hold position for {duration_calc} seconds")
+# neuro_drone.set_attitude(duration = duration_calc)
+# print("Move backward 2")
+# neuro_drone.set_attitude(pitch_angle = pitch_angle_calc, roll_angle = roll_angle_calc, thrust = 0.5, duration = duration_calc)
+
+
+# Take off {ATITTUDE}m in GUIDED mode.
+drone.arm_and_takeoff(attitude)
+
+print("Set default/target airspeed to 0")
+vehicle.airspeed = 0
+#time.sleep(duration_calc)
+
+# Время, через которое нужно печатать сообщение в секундах
+interval = 10
+start_time = time.time()
+
+# висим в воздухе duration_calc
+# in "TheAir" time loop  =  {duration_calc}sec
+while time.time() - start_time < duration_calc:
+    time_passed = int(time.time() - start_time)
+    time_left = duration_calc - time_passed
+    
+
+    # Печатаем сообщение каждые 10 секунд
+    if time_passed % interval == 0:
+        print(f"Осталось {time_left} секунд")
+        df = pd.read_pickle(file_path)
+        print(df.iloc[-1])
+        # Проверяем, если батарея не разряжена до 30%
+        if (df.iloc[-1]["battery_remaining"] < 30):
+            print("Critical Battery lower 30%")
+            print("Цикл завершен: battery low")
+            print("Setting LAND mode...battery low")
+            vehicle.mode = VehicleMode("LAND")
+            time.sleep(1)
+            print("Close vehicle object")
+            vehicle.close()
+            sys.exit(os.EX_OK) # code 0, all ok"""
+    # Ждем 1 секунду перед следующей итерацией
+    time.sleep(1)
+    # Проверяем, если время прошло больше чем 84% времени после подъма выходим из цикла
+    if time_passed > duration_calc * 0.83:
+        print("Прошло больше {duration_calc * 0.83} секунд. Выходим из цикла.")
+        break
+
+print("Цикл завершен")
+print("Setting LAND mode...")
+
+vehicle.mode = VehicleMode("LAND")
+time.sleep(1)
+
+# Close vehicle object before exiting script
+print("Close vehicle object")
+vehicle.close()
+
+print("Completed")
